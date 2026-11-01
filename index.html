@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emotion Cause Extraction</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6ec;
+    --accent: #3b5bdb; --accent-text: #ffffff;
+    --emo-bg: #fff3d6; --emo-border: #f0b429; --emo-text: #7a4b00;
+    --cau-bg: #dcecff; --cau-border: #4a90e2; --cau-text: #0b3d75;
+    --bar: #d5d9e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --card: #1b1e27; --text: #e8eaf0; --muted: #98a0b3; --border: #2b2f3b;
+      --accent: #7c93ff; --accent-text: #10131c;
+      --emo-bg: #3a2e12; --emo-border: #c9961f; --emo-text: #f6d58a;
+      --cau-bg: #14304f; --cau-border: #4a90e2; --cau-text: #a9d0ff;
+      --bar: #343949;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 18px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  textarea { width: 100%; min-height: 110px; resize: vertical; padding: 12px; font: inherit; color: inherit;
+             background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+           background: var(--card); color: var(--text); padding: 8px 14px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .grow { flex: 1; }
+  .thr { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  .examples { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .examples button { font-size: 13px; padding: 4px 10px; margin: 4px 6px 0 0; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; margin-bottom: 14px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid; }
+  .tag.emo { background: var(--emo-bg); border-color: var(--emo-border); color: var(--emo-text); }
+  .tag.cau { background: var(--cau-bg); border-color: var(--cau-border); color: var(--cau-text); }
+  .sentence { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+  .clause { border: 1px solid var(--border); border-left-width: 5px; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .clause.emo { background: var(--emo-bg); border-left-color: var(--emo-border); }
+  .clause.cau { background: var(--cau-bg); border-left-color: var(--cau-border); }
+  .clause.both { background: linear-gradient(90deg, var(--emo-bg), var(--cau-bg)); border-left-color: var(--emo-border); }
+  .ctext { font-weight: 600; margin-bottom: 6px; }
+  .tags { display: flex; gap: 6px; margin-bottom: 6px; min-height: 22px; }
+  .bars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-size: 12px; color: var(--muted); }
+  .bar { height: 6px; background: var(--bar); border-radius: 3px; margin-top: 3px; overflow: hidden; }
+  .fill { height: 100%; border-radius: 3px; }
+  .fill.emo { background: var(--emo-border); } .fill.cau { background: var(--cau-border); }
+  .unk { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  h3 { font-size: 15px; margin: 16px 0 8px; }
+  .pair { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 14px; margin-bottom: 6px; }
+  .pair .arrow { color: var(--muted); }
+  .none { color: var(--muted); font-size: 14px; }
+  .msg { padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 14px; }
+  .msg.err { background: #fde8e8; color: #8a1c1c; border: 1px solid #f3b4b4; }
+  .msg.warn { background: var(--emo-bg); color: var(--emo-text); border: 1px solid var(--emo-border); }
+  .note { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Emotion Cause Extraction</h1>
+  <p class="sub">Type some text. The model marks which clauses express an emotion and which give the cause.</p>
+
+  <div id="status"></div>
+
+  <div class="card">
+    <textarea id="text" placeholder="Example: I was very happy, because my team won the match."></textarea>
+    <div class="row">
+      <button class="primary" id="go">Analyze</button>
+      <button id="clear">Clear</button>
+      <span class="grow"></span>
+      <label class="thr">Sensitivity threshold
+        <input type="range" id="thr" min="0.1" max="0.9" step="0.05" value="0.5">
+        <span id="thrv">0.50</span>
+      </label>
+    </div>
+    <div class="examples">Try an example:
+      <span id="examples"></span>
+    </div>
+  </div>
+
+  <div id="error"></div>
+  <div id="output"></div>
+
+  <p class="note">The model reads each clause separately. Words it never saw in training are treated as unknown, so use simple English
+  similar to the training data for the best results.</p>
+</div>
+
+<script>
+const EXAMPLES = [
+  "I was very happy, because my team won the match.",
+  "He felt sad, since his friend moved away.",
+  "She was furious, because they ignored her request.",
+  "We are delighted, that you could make it. He was angry, about the delay."
+];
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+
+EXAMPLES.forEach(t => {
+  const b = el("button", "", t.length > 38 ? t.slice(0, 36) + "…" : t);
+  b.title = t;
+  b.onclick = () => { $("text").value = t; analyze(); };
+  $("examples").appendChild(b);
+});
+
+$("thr").oninput = () => { $("thrv").textContent = Number($("thr").value).toFixed(2); };
+$("thr").onchange = () => { if ($("text").value.trim()) analyze(); };
+$("clear").onclick = () => { $("text").value = ""; $("output").replaceChildren(); $("error").replaceChildren(); };
+$("go").onclick = analyze;
+$("text").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) analyze(); });
+
+fetch("/api/health").then(r => r.json()).then(h => {
+  if (!h.model_loaded) {
+    const m = el("div", "msg warn", "No trained model found. Run “python model.py --mode train” first, then restart this server.");
+    $("status").appendChild(m);
+  }
+}).catch(() => {
+  $("status").appendChild(el("div", "msg err", "Cannot reach the backend. Start it with “python app.py”."));
+});
+
+function showError(msg) {
+  $("error").replaceChildren(el("div", "msg err", msg));
+}
+
+async function analyze() {
+  const text = $("text").value.trim();
+  $("error").replaceChildren();
+  if (!text) { showError("Please type some text first."); return; }
+  $("go").disabled = true; $("go").textContent = "Analyzing…";
+  try {
+    const res = await fetch("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, threshold: Number($("thr").value) })
+    });
+    const data = await res.json();
+    if (!res.ok) { showError(data.error || "Something went wrong."); return; }
+    render(data);
+  } catch (e) {
+    showError("Cannot reach the backend. Is “python app.py” running?");
+  } finally {
+    $("go").disabled = false; $("go").textContent = "Analyze";
+  }
+}
+
+function bar(label, prob, cls) {
+  const box = el("div");
+  box.appendChild(el("div", "", `${label}: ${(prob * 100).toFixed(0)}%`));
+  const b = el("div", "bar"), f = el("div", "fill " + cls);
+  f.style.width = (prob * 100).toFixed(0) + "%";
+  b.appendChild(f); box.appendChild(b);
+  return box;
+}
+
+function render(data) {
+  const out = $("output");
+  out.replaceChildren();
+
+  const legend = el("div", "legend");
+  const l1 = el("span"); l1.append(el("span", "tag emo", "EMOTION"), " clause expresses an emotion");
+  const l2 = el("span"); l2.append(el("span", "tag cau", "CAUSE"), " clause gives the reason");
+  legend.append(l1, l2);
+  out.appendChild(legend);
+
+  data.results.forEach((r, i) => {
+    const card = el("div", "card");
+    card.appendChild(el("p", "sentence", `Sentence ${i + 1}: ${r.sentence}`));
+
+    r.clauses.forEach(c => {
+      const cls = c.is_emotion && c.is_cause ? "both" : c.is_emotion ? "emo" : c.is_cause ? "cau" : "";
+      const box = el("div", "clause " + cls);
+      box.appendChild(el("div", "ctext", c.text));
+      const tags = el("div", "tags");
+      if (c.is_emotion) tags.appendChild(el("span", "tag emo", "EMOTION"));
+      if (c.is_cause) tags.appendChild(el("span", "tag cau", "CAUSE"));
+      if (!c.is_emotion && !c.is_cause) tags.appendChild(el("span", "none", "neither"));
+      box.appendChild(tags);
+      const bars = el("div", "bars");
+      bars.append(bar("Emotion probability", c.emotion_prob, "emo"), bar("Cause probability", c.cause_prob, "cau"));
+      box.appendChild(bars);
+      if (c.unknown_words.length) box.appendChild(el("div", "unk", "Unknown words: " + c.unknown_words.join(", ")));
+      card.appendChild(box);
+    });
+
+    card.appendChild(el("h3", "", "Emotion → cause pairs"));
+    if (!r.pairs.length) {
+      card.appendChild(el("div", "none", "No emotion–cause pair found in this sentence."));
+    } else {
+      r.pairs.forEach(p => {
+        const row = el("div", "pair");
+        row.append(el("span", "tag emo", p.emotion), el("span", "arrow", "caused by"), el("span", "tag cau", p.cause),
+                   el("span", "note", `score ${p.score.toFixed(2)}`));
+        card.appendChild(row);
+      });
+    }
+    out.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
